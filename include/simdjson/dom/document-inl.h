@@ -10,6 +10,7 @@
 #include "simdjson/internal/jsonformatutils.h"
 
 #include <cstring>
+#include <limits>
 
 namespace simdjson {
 namespace dom {
@@ -37,15 +38,41 @@ inline error_code document::allocate(size_t capacity) noexcept {
     return CAPACITY;
   }
 
+  auto checked_roundup64 = [](size_t value, size_t &out) noexcept -> bool {
+    constexpr size_t roundup_mask = 64 - 1;
+    if (value > (std::numeric_limits<size_t>::max)() - roundup_mask) {
+      return false;
+    }
+    out = SIMDJSON_ROUNDUP_N(value, 64);
+    return true;
+  };
+
   // a pathological input like "[[[[..." would generate capacity tape elements, so
   // need a capacity of at least capacity + 1, but it is also possible to do
   // worse with "[7,7,7,7,6,7,7,7,6,7,7,6,[7,7,7,7,6,7,7,7,6,7,7,6,7,7,7,7,7,7,6"
   //where capacity + 1 tape elements are
   // generated, see issue https://github.com/simdjson/simdjson/issues/345
-  size_t tape_capacity = SIMDJSON_ROUNDUP_N(capacity + 3, 64);
+  size_t tape_capacity;
+  if (capacity > (std::numeric_limits<size_t>::max)() - 3 ||
+      !checked_roundup64(capacity + 3, tape_capacity)) {
+    return CAPACITY;
+  }
   // a document with only zero-length strings... could have capacity/3 string
   // and we would need capacity/3 * 5 bytes on the string buffer
-  size_t string_capacity = SIMDJSON_ROUNDUP_N(5 * capacity / 3 + SIMDJSON_PADDING, 64);
+  // Compute floor(5 * capacity / 3) without overflow: (capacity/3)*5 + ((capacity%3)*5)/3.
+  const size_t capacity_div3 = capacity / 3;
+  const size_t capacity_mod3 = capacity % 3;
+  if (capacity_div3 > (std::numeric_limits<size_t>::max)() / 5) {
+    return CAPACITY;
+  }
+  const size_t scaled_capacity = capacity_div3 * 5 + ((capacity_mod3 * 5) / 3);
+  if (scaled_capacity > (std::numeric_limits<size_t>::max)() - SIMDJSON_PADDING) {
+    return CAPACITY;
+  }
+  size_t string_capacity;
+  if (!checked_roundup64(scaled_capacity + SIMDJSON_PADDING, string_capacity)) {
+    return CAPACITY;
+  }
   string_buf.reset( new (std::nothrow) uint8_t[string_capacity]);
   tape.reset(new (std::nothrow) uint64_t[tape_capacity]);
   if(!(string_buf && tape)) {
