@@ -1,6 +1,8 @@
 #include "simdjson.h"
 #include "test_ondemand.h"
 
+#include <limits>
+
 using namespace simdjson;
 
 namespace error_tests {
@@ -179,6 +181,14 @@ namespace error_tests {
     auto json = R"({"k":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"})"_padded;
     ondemand::document doc;
     ASSERT_SUCCESS(parser.iterate(json).get(doc));
+    TEST_SUCCEED();
+  }
+
+  bool parser_allocate_extreme_capacity() {
+    TEST_START();
+    ondemand::parser parser;
+    parser.set_max_capacity((std::numeric_limits<size_t>::max)());
+    ASSERT_ERROR(parser.allocate((std::numeric_limits<size_t>::max)()), CAPACITY);
     TEST_SUCCEED();
   }
 
@@ -476,6 +486,7 @@ namespace error_tests {
            empty_document_error() &&
            parser_max_capacity() &&
            parser_set_max_capacity() &&
+           parser_allocate_extreme_capacity() &&
            get_fail_then_succeed_bool() &&
            get_fail_then_succeed_null() &&
            simple_error_example() &&

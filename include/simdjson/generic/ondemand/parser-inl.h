@@ -13,6 +13,8 @@
 #include "simdjson/generic/ondemand/raw_json_string.h"
 #endif // SIMDJSON_CONDITIONAL_INCLUDE
 
+#include <limits>
+
 namespace simdjson {
 namespace SIMDJSON_IMPLEMENTATION {
 namespace ondemand {
@@ -25,9 +27,14 @@ simdjson_warn_unused simdjson_inline error_code parser::allocate(size_t new_capa
   if (new_capacity > max_capacity()) { return CAPACITY; }
   if (string_buf && new_capacity == capacity() && new_max_depth == max_depth()) { return SUCCESS; }
 
+  const size_t quotient = new_capacity / 3;
+  // Keep room for the remainder term and the padding addition below.
+  const size_t maximum_quotient = ((std::numeric_limits<size_t>::max)() - SIMDJSON_PADDING - 3) / 5;
+  if (quotient > maximum_quotient) { return CAPACITY; }
+
   // string_capacity copied from document::allocate
   _capacity = 0;
-  size_t string_capacity = SIMDJSON_ROUNDUP_N(5 * new_capacity / 3 + SIMDJSON_PADDING, 64);
+  size_t string_capacity = SIMDJSON_ROUNDUP_N((quotient * 5) + ((new_capacity % 3) * 5) / 3 + SIMDJSON_PADDING, 64);
   string_buf.reset(new (std::nothrow) uint8_t[string_capacity]);
 #if SIMDJSON_DEVELOPMENT_CHECKS
   start_positions.reset(new (std::nothrow) token_position[new_max_depth]);
