@@ -71,28 +71,28 @@ inline error_code document::allocate(size_t capacity) noexcept {
   // worse with "[7,7,7,7,6,7,7,7,6,7,7,6,[7,7,7,7,6,7,7,7,6,7,7,6,7,7,7,7,7,7,6"
   //where capacity + 1 tape elements are
   // generated, see issue https://github.com/simdjson/simdjson/issues/345
-  size_t tape_elements;
+  size_t tape_elements{0};
   if (!add_checked(capacity, size_t(3), tape_elements)) {
     return CAPACITY;
   }
-  size_t tape_capacity;
+  size_t tape_capacity{0};
   if (!roundup64_checked(tape_elements, tape_capacity)) {
     return CAPACITY;
   }
 
   // a document with only zero-length strings... could have capacity/3 string
   // and we would need capacity/3 * 5 bytes on the string buffer
-  size_t string_bytes;
+  size_t string_bytes{0};
   if (!string_bytes_for_capacity(capacity, string_bytes)) {
     return CAPACITY;
   }
 
-  size_t padded_string_bytes;
+  size_t padded_string_bytes{0};
   if (!add_checked(string_bytes, size_t(SIMDJSON_PADDING), padded_string_bytes)) {
     return CAPACITY;
   }
 
-  size_t string_capacity;
+  size_t string_capacity{0};
   if (!roundup64_checked(padded_string_bytes, string_capacity)) {
     return CAPACITY;
   }
