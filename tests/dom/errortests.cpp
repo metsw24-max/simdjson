@@ -37,6 +37,16 @@ namespace parser_load {
     TEST_FAIL("No documents returned");
   }
 
+  bool parser_allocate_capacity_overflow_32bit() {
+    TEST_START();
+    if (sizeof(size_t) != 4) {
+      TEST_SUCCEED();
+    }
+    dom::parser parser;
+    ASSERT_ERROR(parser.allocate(SIMDJSON_MAXSIZE_BYTES, DEFAULT_MAX_DEPTH), CAPACITY);
+    TEST_SUCCEED();
+  }
+
   bool parser_parse_many_documents_error_in_the_middle() {
     TEST_START();
     const padded_string DOC = "1 2 [} 3"_padded;
@@ -147,6 +157,7 @@ namespace parser_load {
     return true
         && parser_load_capacity()
         && parser_load_many_capacity()
+        && parser_allocate_capacity_overflow_32bit()
         && parser_load_nonexistent()
         && parser_load_many_nonexistent()
         && padded_string_load_nonexistent()

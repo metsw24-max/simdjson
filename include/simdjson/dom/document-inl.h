@@ -10,6 +10,7 @@
 #include "simdjson/internal/jsonformatutils.h"
 
 #include <cstring>
+#include <limits>
 
 namespace simdjson {
 namespace dom {
@@ -37,21 +38,65 @@ inline error_code document::allocate(size_t capacity) noexcept {
     return CAPACITY;
   }
 
+  auto add_checked = [](size_t lhs, size_t rhs, size_t &sum) noexcept -> bool {
+    if (lhs > (std::numeric_limits<size_t>::max)() - rhs) {
+      return false;
+    }
+    sum = lhs + rhs;
+    return true;
+  };
+
+  auto roundup64_checked = [](size_t value, size_t &rounded) noexcept -> bool {
+    constexpr size_t roundup_mask = 64 - 1;
+    if (value > (std::numeric_limits<size_t>::max)() - roundup_mask) {
+      return false;
+    }
+    rounded = SIMDJSON_ROUNDUP_N(value, 64);
+    return true;
+  };
+
+  auto string_bytes_for_capacity = [](size_t input_capacity, size_t &string_bytes) noexcept -> bool {
+    // Compute floor(5 * input_capacity / 3) without overflow.
+    const size_t capacity_div3 = input_capacity / 3;
+    const size_t capacity_mod3 = input_capacity % 3;
+    if (capacity_div3 > (std::numeric_limits<size_t>::max)() / 5) {
+      return false;
+    }
+    string_bytes = capacity_div3 * 5 + ((capacity_mod3 * 5) / 3);
+    return true;
+  };
+
   // a pathological input like "[[[[..." would generate capacity tape elements, so
   // need a capacity of at least capacity + 1, but it is also possible to do
   // worse with "[7,7,7,7,6,7,7,7,6,7,7,6,[7,7,7,7,6,7,7,7,6,7,7,6,7,7,7,7,7,7,6"
   //where capacity + 1 tape elements are
   // generated, see issue https://github.com/simdjson/simdjson/issues/345
-  if(capacity + 3 < capacity) {
-    return CAPACITY; // overflow, only happen on legacy 32-bit systems with very large capacity
+  size_t tape_elements;
+  if (!add_checked(capacity, size_t(3), tape_elements)) {
+    return CAPACITY;
   }
-  size_t tape_capacity = SIMDJSON_ROUNDUP_N(capacity + 3, 64);
+  size_t tape_capacity;
+  if (!roundup64_checked(tape_elements, tape_capacity)) {
+    return CAPACITY;
+  }
+
   // a document with only zero-length strings... could have capacity/3 string
   // and we would need capacity/3 * 5 bytes on the string buffer
-  if(5 * (capacity / 3) + SIMDJSON_PADDING < SIMDJSON_PADDING) {
-    return CAPACITY; // overflow, only happen on legacy 32-bit systems with very large capacity
+  size_t string_bytes;
+  if (!string_bytes_for_capacity(capacity, string_bytes)) {
+    return CAPACITY;
   }
-  size_t string_capacity = SIMDJSON_ROUNDUP_N(5 * (capacity / 3) + SIMDJSON_PADDING, 64);
+
+  size_t padded_string_bytes;
+  if (!add_checked(string_bytes, size_t(SIMDJSON_PADDING), padded_string_bytes)) {
+    return CAPACITY;
+  }
+
+  size_t string_capacity;
+  if (!roundup64_checked(padded_string_bytes, string_capacity)) {
+    return CAPACITY;
+  }
+
   string_buf.reset( new (std::nothrow) uint8_t[string_capacity]);
   tape.reset(new (std::nothrow) uint64_t[tape_capacity]);
   if(!(string_buf && tape)) {
